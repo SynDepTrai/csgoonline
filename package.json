@@ -1,0 +1,15 @@
+{
+  "name": "voxshot-3d",
+  "version": "1.0.0",
+  "description": "VoxShot 3D - Lightweight Low-Poly Online Multiplayer Browser FPS (Quick Play + Private Room Code + P2P)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "peerjs": "^1.5.4",
+    "three": "^0.170.0",
+    "ws": "^8.18.0"
+  }
+}

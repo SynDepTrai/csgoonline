@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>CS:GO WEB — DE_DUST II Tactical Online</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- 3D WebGL Viewport -->
+  <div id="game-canvas-container"></div>
+
+  <!-- Multi-Style Scope Overlay (AWP / Scout / AUG) -->
+  <div id="scope-overlay" class="hidden">
+    <canvas id="scope-canvas" width="900" height="900"></canvas>
+    <div id="scope-zoom-badge" class="scope-zoom-badge">ZOOM 1X</div>
+  </div>
+
+  <!-- Blood / Damage Vignette -->
+  <div id="damage-flash"></div>
+
+  <!-- CS:GO In-Game HUD -->
+  <div id="hud" class="hidden">
+    <!-- Top Left: CS:GO Rotating Radar + Cash Economy -->
+    <div class="hud-top-left">
+      <div class="radar-frame">
+        <canvas id="minimap" width="156" height="156"></canvas>
+        <div class="radar-loc-tag">DE_DUST2</div>
+      </div>
+      <div class="cash-panel">
+        <span id="hud-money" class="cash-amount">$4200</span>
+        <button id="btn-open-buy" class="buy-pill-btn" type="button" title="Mở Cửa Hàng Mua Vũ Khí (Phím B)">[B] MUA ĐỒ</button>
+      </div>
+      <div id="eco-toast" class="eco-toast hidden"></div>
+    </div>
+
+    <!-- Top Center: CS:GO CT vs T Scoreboard Bar -->
+    <div class="hud-top-center">
+      <div class="csgo-top-bar">
+        <div class="team-score-box ct-box">
+          <span class="team-tag">CT</span>
+          <strong id="hud-ct-score">0</strong>
+        </div>
+        <div class="match-center-box">
+          <div class="map-mode-line">
+            <span id="hud-mode-badge">CT vs T</span> • <strong id="hud-room-code">DUST2</strong>
+          </div>
+          <div id="hud-target-line" class="target-sub">Chạm mốc 30 mạng</div>
+        </div>
+        <div class="team-score-box t-box">
+          <strong id="hud-t-score">0</strong>
+          <span class="team-tag">T</span>
+        </div>
+      </div>
+
+      <div class="top-quick-actions">
+        <button id="btn-hud-copy" class="hud-mini-btn" type="button">🔗 Copy Link Mời</button>
+        <button id="btn-hud-settings" class="hud-mini-btn" type="button">⚙️ Cài Đặt [ESC]</button>
+        <span id="hud-net-info" class="net-telemetry">60 FPS • 1 ms</span>
+      </div>
+    </div>
+
+    <!-- Top Right: CS:GO Killfeed -->
+    <div id="killfeed" class="hud-top-right"></div>
+
+    <!-- Center Dynamic Canvas Crosshair & Hitmarkers -->
+    <div id="crosshair-wrap">
+      <canvas id="crosshair-canvas" width="120" height="120"></canvas>
+      <div id="hitmarker" class="hidden">
+        <span class="hm-1"></span>
+        <span class="hm-2"></span>
+      </div>
+      <div id="floating-popups"></div>
+    </div>
+
+    <!-- Reload & Status Banners -->
+    <div id="reload-banner" class="hidden">ĐANG NẠP ĐẠN...</div>
+
+    <div id="respawn-banner" class="hidden">
+      <div class="respawn-title">BẠN ĐÃ BỊ HẠ GỤC</div>
+      <div id="respawn-killer" class="respawn-sub">Bởi đối thủ</div>
+      <div class="respawn-timer">Hồi sinh ngay sau ít giây • Nhấn <b>[B]</b> để mua súng mới</div>
+    </div>
+
+    <div id="match-end-banner" class="hidden">
+      <div class="winner-crown">KẾT THÚC HIỆP ĐẤU</div>
+      <div id="match-winner-text" class="winner-name">COUNTER-TERRORISTS WIN!</div>
+      <div class="winner-sub">Hiệp đấu mới sẽ bắt đầu sau vài giây...</div>
+    </div>
+
+    <!-- Bottom Left: CS:GO Health + Kevlar Armor + Chat -->
+    <div class="hud-bottom-left">
+      <div class="csgo-vitals">
+        <div class="vital-block">
+          <span class="vital-icon hp-plus">✚</span>
+          <span id="hud-hp-num" class="vital-val">100</span>
+          <div class="vital-bar"><div id="hud-hp-fill" class="vital-fill hp-fill"></div></div>
+        </div>
+        <div class="vital-block armor-block">
+          <span class="vital-icon armor-shield">🛡</span>
+          <span id="hud-armor-num" class="vital-val">100</span>
+          <div class="vital-bar"><div id="hud-armor-fill" class="vital-fill armor-fill"></div></div>
+        </div>
+      </div>
+
+      <div class="keybind-strip">
+        <span><b>Chuột Phải</b> Bật Scope</span>
+        <span><b>V</b> Đổi Scope</span>
+        <span><b>B</b> Mua Súng & Scope</span>
+        <span><b>Shift</b> Đi êm</span>
+        <span><b>Q</b> Đổi nhanh</span>
+        <span><b>F</b> Xoay súng</span>
+      </div>
+
+      <div class="chat-box">
+        <div id="chat-messages" class="chat-messages"></div>
+        <input id="chat-input" type="text" maxlength="100" placeholder="[Enter] Chat đồng đội / phòng..." autocomplete="off" />
+      </div>
+    </div>
+
+    <!-- Bottom Right: CS:GO Weapon Inventory Stack & Ammo -->
+    <div class="hud-bottom-right">
+      <div id="inv-stack" class="inv-stack">
+        <div id="slot-primary" class="inv-slot active">
+          <span class="inv-name">AK-47</span>
+          <span class="inv-key">1</span>
+        </div>
+        <div id="slot-secondary" class="inv-slot">
+          <span class="inv-name">USP-S</span>
+          <span class="inv-key">2</span>
+        </div>
+        <div id="slot-melee" class="inv-slot">
+          <span class="inv-name">Karambit | Fade</span>
+          <span class="inv-key">3</span>
+        </div>
+        <div id="slot-medishot" class="inv-slot">
+          <span class="inv-name">Medi-Shot (+55 HP) x1</span>
+          <span class="inv-key">4</span>
+        </div>
+      </div>
+
+      <div class="csgo-ammo-panel">
+        <div class="scope-active-bar">
+          <span id="hud-optic-badge" class="optic-badge">🔭 Red-Dot 1.5x</span>
+          <span class="optic-hint">[Chuột Phải: Ngắm | V: Đổi]</span>
+        </div>
+        <div id="hud-weapon-name" class="weapon-label">AK-47</div>
+        <div class="ammo-numbers">
+          <span id="hud-ammo-cur" class="ammo-cur">30</span>
+          <span class="ammo-sep">/</span>
+          <span id="hud-ammo-res" class="ammo-res">90</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Scoreboard -->
+    <div id="scoreboard" class="scoreboard hidden">
+      <div class="sb-header">
+        <span id="sb-title">DE_DUST II — BẢNG ĐIỂM CHIẾN THUẬT</span>
+        <span id="sb-room-info">Phòng: DUST2</span>
+      </div>
+      <table class="sb-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Đặc Nhiệm</th>
+            <th>Phe</th>
+            <th>Vũ Khí</th>
+            <th>K</th>
+            <th>D</th>
+            <th>Điểm</th>
+          </tr>
+        </thead>
+        <tbody id="sb-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CS:GO Buy Menu Overlay ([B] Key) -->
+  <div id="buy-overlay" class="overlay-backdrop hidden">
+    <div class="buy-modal">
+      <div class="buy-header">
+        <div>
+          <span class="csgo-subtag">COUNTER-STRIKE TACTICAL ARSENAL</span>
+          <h2>CỬA HÀNG MUA VŨ KHÍ & GIÁP [PHÍM B]</h2>
+        </div>
+        <div class="buy-cash-box">
+          <span>Tiền hiện có:</span>
+          <strong id="buy-money-val">$4200</strong>
+          <button id="btn-close-buy" class="btn-close-x" type="button">✕ Đóng [B / ESC]</button>
+        </div>
+      </div>
+
+      <div id="buy-feedback" class="buy-feedback">Chọn súng để mua và trang bị ngay lập tức (Mỗi mạng hạ gục sẽ thưởng thêm tiền $)</div>
+
+      <div id="buy-grid" class="buy-grid"></div>
+
+      <div class="buy-gear-row">
+        <div class="gear-title">🔭 5. MUA & LẮP ỐNG NGẮM (SCOPES — LẮP ĐƯỢC CHO MỌI SÚNG, BẤM CHUỘT PHẢI ĐỂ NGẮM)</div>
+        <div id="buy-scope-cards" class="scope-cards-grid"></div>
+      </div>
+
+      <div class="buy-gear-row">
+        <div class="gear-title">🛡️ 6. GIÁP CHỐNG ĐẠN & HỒI PHỤC</div>
+        <div id="buy-gear-cards" class="gear-cards"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause & Quick Invite Overlay (ESC) -->
+  <div id="pause-overlay" class="overlay-backdrop hidden">
+    <div class="pause-card">
+      <span class="csgo-subtag">CS:GO DUST II MULTIPLAYER</span>
+      <h2>TẠM DỪNG TRẬN ĐẤU</h2>
+
+      <div class="invite-box">
+        <div class="invite-code-line">
+          <span>Mã phòng:</span>
+          <strong id="pause-room-code">DUST2</strong>
+          <span id="pause-net-badge" class="net-mode-tag">Server WS</span>
+        </div>
+        <div class="invite-actions">
+          <button id="btn-copy-code" class="btn-secondary" type="button">📋 Copy Mã Phòng</button>
+          <button id="btn-copy-link" class="btn-gold-sm" type="button">🔗 Copy Link Vào Thẳng</button>
+        </div>
+        <div id="copy-toast" class="copy-toast hidden">Đã sao chép!</div>
+      </div>
+
+      <div class="pause-buttons">
+        <button id="btn-resume" class="btn-csgo-go" type="button">▶ TIẾP TỤC CHIẾN ĐẤU</button>
+        <button id="btn-pause-buy" class="btn-secondary-wide" type="button">🛒 Mở Cửa Hàng Mua Vũ Khí [B]</button>
+        <button id="btn-pause-settings" class="btn-secondary-wide" type="button">⚙️ Cài Đặt Độ Nhạy, Tốc Độ & Tâm Ngắm</button>
+        <button id="btn-leave" class="btn-danger" type="button">Thoát Ra Sảnh Chính</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comprehensive CS:GO Settings Modal (Accessible from Main Menu & In-Game) -->
+  <div id="settings-modal" class="overlay-backdrop hidden" style="z-index: 50;">
+    <div class="settings-dialog">
+      <div class="settings-header">
+        <div>
+          <span class="csgo-subtag">CONFIGURATION & CONSOLE</span>
+          <h2>⚙️ CÀI ĐẶT CS:GO (ĐỘ NHẠY • TỐC ĐỘ • TÂM NGẮM)</h2>
+        </div>
+        <button id="btn-close-settings" class="btn-close-x" type="button">✓ Lưu & Đóng</button>
+      </div>
+
+      <div class="settings-tabs">
+        <button class="s-tab active" data-stab="tab-control" type="button">🖱️ Độ Nhạy & Tốc Độ</button>
+        <button class="s-tab" data-stab="tab-crosshair" type="button">🎯 Tâm Ngắm & Ống Ngắm</button>
+        <button class="s-tab" data-stab="tab-av" type="button">🔊 Đồ Họa & Âm Thanh</button>
+      </div>
+
+      <!-- TAB 1: Mouse Sensitivity, Zoom Sens & Game Speed / Mode -->
+      <div id="tab-control" class="s-tab-body">
+        <div class="setting-group-title">ĐỘ NHẠY CHUỘT (SENSITIVITY)</div>
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Độ nhạy chuột (Mouse Sensitivity)</strong>
+            <small>Chuẩn tốc độ quay tâm bình thường</small>
+          </div>
+          <div class="s-control">
+            <input id="set-sens-range" type="range" min="0.1" max="4.0" step="0.05" value="1.0" />
+            <input id="set-sens-num" class="num-box" type="number" min="0.1" max="4.0" step="0.05" value="1.00" />
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Độ nhạy khi bật ống ngắm (Zoom Sensitivity)</strong>
+            <small>Tương tự <code>zoom_sensitivity_ratio_mouse</code> khi ngắm AWP / Scout / AUG</small>
+          </div>
+          <div class="s-control">
+            <input id="set-zoom-sens-range" type="range" min="0.3" max="2.0" step="0.05" value="0.95" />
+            <input id="set-zoom-sens-num" class="num-box" type="number" min="0.3" max="2.0" step="0.05" value="0.95" />
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Kiểu thao tác Chuột Phải bật Scope (ADS Mode)</strong>
+            <small>Hỗ trợ cả bấm bật/tắt kiểu CS:GO lẫn nhấn giữ kiểu PUBG/COD</small>
+          </div>
+          <div class="s-control">
+            <select id="set-ads-mode">
+              <option value="hybrid" selected>Thông minh (Bấm nhanh = Bật/Tắt • Nhấn giữ = Nhả ra tắt)</option>
+              <option value="toggle">Bấm Chuột Phải để Bật / Tắt (Toggle chuẩn CS:GO)</option>
+              <option value="hold">Giữ Chuột Phải để Ngắm (Hold chuẩn PUBG / COD)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Đảo ngược chuột dọc (Invert Mouse Y)</strong>
+          </div>
+          <div class="s-control">
+            <select id="set-invert-y">
+              <option value="0">Tắt (Mặc định)</option>
+              <option value="1">Bật (Kéo xuống nhìn lên)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-group-title">TỐC ĐỘ TRẬN ĐẤU & CHẾ ĐỘ PHÒNG</div>
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Tốc độ di chuyển (Move Speed Scale)</strong>
+            <small>100% = Chuẩn nhịp chiến thuật CS:GO • 125%+ = Nhịp độ nhanh kiểu Surf/Deathmatch</small>
+          </div>
+          <div class="s-control">
+            <input id="set-speed-range" type="range" min="0.65" max="1.6" step="0.05" value="1.0" />
+            <span id="set-speed-val" class="val-pill">100%</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Chế độ Kinh tế Mua Đồ (Economy Mode)</strong>
+            <small>Áp dụng khi tạo phòng hoặc cập nhật trực tiếp cho phòng hiện tại</small>
+          </div>
+          <div class="s-control">
+            <select id="set-eco-mode">
+              <option value="csgo">Chuẩn CS:GO ($4200 đầu trận + thưởng $ hạ gục)</option>
+              <option value="free">Mua Tự Do Miễn Phí ($16000 mua mọi súng)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Số lượng AI Bot trong phòng hiện tại</strong>
+          </div>
+          <div class="s-control">
+            <select id="set-room-bots">
+              <option value="0">0 Bot (Chỉ người chơi thật)</option>
+              <option value="2">2 Bot</option>
+              <option value="4">4 Bot</option>
+              <option value="5" selected>5 Bot</option>
+              <option value="8">8 Bot (Đông vui hỗn chiến)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: Crosshair & Scope Customization -->
+      <div id="tab-crosshair" class="s-tab-body hidden">
+        <div class="ch-preview-box">
+          <canvas id="ch-preview-canvas" width="280" height="110"></canvas>
+          <span class="preview-caption">Xem trước Tâm Ngắm trên nền tường Dust II</span>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Kiểu Tâm Ngắm (Crosshair Style)</strong></div>
+          <div class="s-control">
+            <select id="set-ch-style">
+              <option value="static">1. CS:GO Classic Tĩnh (Pro Static)</option>
+              <option value="dynamic">2. CS:GO Classic Động (Nở khi chạy & sấy)</option>
+              <option value="dot">3. Chấm Tròn Duy Nhất (One-Tap Headshot)</option>
+              <option value="tshape">4. Tâm Chữ T (Thoáng tầm nhìn đầu địch)</option>
+              <option value="circle">5. Vòng Tròn + Chấm Tâm (Tactical Ring)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Kiểu Tâm Ống Ngắm (Sniper / Scope Reticle)</strong></div>
+          <div class="s-control">
+            <select id="set-scope-style">
+              <option value="csgo">1. Ống ngắm AWP CS:GO Cổ Điển</option>
+              <option value="mildot">2. Ống ngắm Quân Sự Mil-Dot Rangefinder</option>
+              <option value="reddot">3. Tâm Quang Học Red-Dot / Chevron Sáng</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Màu Tâm Ngắm</strong></div>
+          <div id="ch-color-swatches" class="s-control color-row"></div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Độ dài vạch tâm (Length)</strong></div>
+          <div class="s-control">
+            <input id="set-ch-len" type="range" min="2" max="18" step="1" value="7" />
+            <span id="val-ch-len" class="val-pill">7</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Độ mở giữa tâm (Gap)</strong></div>
+          <div class="s-control">
+            <input id="set-ch-gap" type="range" min="0" max="14" step="1" value="4" />
+            <span id="val-ch-gap" class="val-pill">4</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Độ dày nét (Thickness)</strong></div>
+          <div class="s-control">
+            <input id="set-ch-thick" type="range" min="1" max="5" step="0.5" value="2" />
+            <span id="val-ch-thick" class="val-pill">2</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Tùy chọn Chấm giữa & Viền đen</strong></div>
+          <div class="s-control">
+            <label class="chk-inline"><input id="set-ch-dot" type="checkbox" /> Chấm tâm giữa</label>
+            <label class="chk-inline"><input id="set-ch-outline" type="checkbox" checked /> Viền đen sắc nét</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: Graphics & Audio -->
+      <div id="tab-av" class="s-tab-body hidden">
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Góc nhìn rộng (FOV)</strong>
+            <small>Mặc định chuẩn CS:GO là 75°</small>
+          </div>
+          <div class="s-control">
+            <input id="set-fov" type="range" min="68" max="95" step="1" value="75" />
+            <span id="val-fov" class="val-pill">75°</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Tay cầm vũ khí (<code>cl_righthand</code>)</strong>
+          </div>
+          <div class="s-control">
+            <select id="set-hand">
+              <option value="right">Tay Phải (Mặc định)</option>
+              <option value="left">Tay Trái (Pro cl_righthand 0)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label">
+            <strong>Chất lượng Đổ Bóng Mặt Trời (Shadows)</strong>
+          </div>
+          <div class="s-control">
+            <select id="set-shadows">
+              <option value="1">Cao (Đổ bóng chân thực Dust II)</option>
+              <option value="0">Tắt bóng (Tối ưu FPS máy yếu)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Âm lượng Tổng (Master Volume)</strong></div>
+          <div class="s-control">
+            <input id="set-vol-master" type="range" min="0" max="100" step="5" value="55" />
+            <span id="val-vol-master" class="val-pill">55%</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="s-label"><strong>Âm lượng Tiếng Bước Chân (Footsteps)</strong></div>
+          <div class="s-control">
+            <input id="set-vol-step" type="range" min="0" max="200" step="10" value="110" />
+            <span id="val-vol-step" class="val-pill">110%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CS:GO Main Lobby Screen -->
+  <div id="menu-screen" class="overlay-backdrop">
+    <div class="menu-container">
+      <header class="menu-header">
+        <div class="brand-wrap">
+          <span class="csgo-subtag">COUNTER-STRIKE TACTICAL WEB EDITION • DE_DUST II</span>
+          <h1>CS:GO <span>DUST II ONLINE</span></h1>
+        </div>
+        <div class="header-right-group">
+          <div class="server-pill">
+            <span class="dot-live"></span>
+            <span id="menu-online-stat">Máy chủ Sẵn Sàng</span>
+          </div>
+          <button id="btn-menu-settings" class="btn-settings-top" type="button">⚙️ Cài Đặt Tâm Ngắm / Độ Nhạy</button>
+        </div>
+      </header>
+
+      <div id="menu-error" class="error-banner hidden"></div>
+
+      <div class="menu-grid">
+        <!-- Left Column: Operator Profile & Starting Loadout -->
+        <section class="panel loadout-panel">
+          <h3>1. Đặc Nhiệm & Vũ Khí Khởi Đầu</h3>
+
+          <label class="field-label" for="player-name">Tên chiến binh (Ingame Tag)</label>
+          <input id="player-name" class="text-input" type="text" maxlength="18" placeholder="Nhập tên của bạn..." value="s1mple_VN" />
+
+          <div class="field-label">Trang phục Đặc Nhiệm (SAS / Elite Crew)</div>
+          <div id="skin-picker" class="skin-picker"></div>
+
+          <div class="field-label">Vũ khí mang vào trận <small>(Vào trận nhấn <b>[B]</b> mở Shop mua đủ 11 súng & giáp!)</small></div>
+          <div id="weapon-cards" class="weapon-cards">
+            <button class="w-card selected" data-weapon="ak47" type="button">
+              <div class="w-card-top"><strong>AK-47</strong><span class="w-tag tag-gold">1-Tap Đầu</span></div>
+              <div class="w-desc">36 Dmg thân • 110 Dmg Headshot • Huyền thoại phe T</div>
+            </button>
+            <button class="w-card" data-weapon="m4a1s" type="button">
+              <div class="w-card-top"><strong>M4A1-S Giảm Thanh</strong><span class="w-tag">Siêu Chuẩn</span></div>
+              <div class="w-desc">Súng trường giảm thanh CT • Độ giật cực thấp, sấy êm</div>
+            </button>
+            <button class="w-card" data-weapon="awp" type="button">
+              <div class="w-card-top"><strong>AWP Sniper</strong><span class="w-tag tag-red">1-Shot Hạ Gục</span></div>
+              <div class="w-desc">115 Dmg thân • Ống ngắm 2 nấc Zoom chuẩn CS:GO</div>
+            </button>
+            <button class="w-card" data-weapon="aug" type="button">
+              <div class="w-card-top"><strong>AUG (Ống Ngắm ACOG)</strong><span class="w-tag">Ngắm Quang Học</span></div>
+              <div class="w-desc">Súng trường tích hợp ống ngắm Red-Dot/ACOG chuột phải</div>
+            </button>
+            <button class="w-card" data-weapon="deagle" type="button">
+              <div class="w-card-top"><strong>Desert Eagle</strong><span class="w-tag tag-amber">One-Deag</span></div>
+              <div class="w-desc">Lục bạc Chrome .50AE • 145 Dmg Headshot cực phê</div>
+            </button>
+          </div>
+        </section>
+
+        <!-- Right Column: Online Matchmaking & Private Friend Rooms -->
+        <section class="panel mode-panel">
+          <h3>2. Tham Chiến Online (DE_DUST II)</h3>
+
+          <div class="quick-play-card">
+            <div class="qp-info">
+              <div class="qp-badge">⚡ TÌM TRẬN NHANH (CT vs T)</div>
+              <h4>Ghép Phòng Công Khai Dust II</h4>
+              <p>Vào ngay chiến trường CT vs T thời gian thực, kiếm tiền thưởng hạ gục để bấm <b>[B]</b> lên AWP, AK-47, Giáp Kevlar!</p>
+            </div>
+            <button id="btn-quick-play" class="btn-csgo-go" type="button">
+              ⚡ TÌM PHÒNG NHANH (GO!)
+            </button>
+          </div>
+
+          <div class="divider-or"><span>HOẶC TẠO PHÒNG RIÊNG BẮN VỚI BẠN BÈ</span></div>
+
+          <div class="friend-room-card">
+            <div class="net-tabs">
+              <button class="net-tab active" data-net="ws" type="button">🚀 Phòng Máy Chủ (Server)</button>
+              <button class="net-tab" data-net="p2p" type="button">🌐 Phòng P2P Trực Tiếp (WebRTC)</button>
+            </div>
+            <p id="net-tab-desc" class="net-desc">
+              Tạo mã phòng 5 ký tự trên Server độ trễ thấp — gửi mã hoặc Link mời cho bạn bè vào bắn ngay.
+            </p>
+
+            <div class="join-row">
+              <input id="room-code-input" class="code-input" type="text" maxlength="8" placeholder="NHẬP MÃ PHÒNG BẠN BÈ..." />
+              <button id="btn-join-room" class="btn-join" type="button">Vào Phòng</button>
+            </div>
+
+            <div class="create-box">
+              <div class="create-options-4">
+                <label>
+                  <span>Chế độ đấu</span>
+                  <select id="create-mode">
+                    <option value="tdm" selected>Đấu Đội (CT vs T)</option>
+                    <option value="ffa">Đấu Đơn (FFA)</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Kinh tế mua đồ</span>
+                  <select id="create-eco">
+                    <option value="csgo" selected>Tiền CS:GO ($)</option>
+                    <option value="free">Miễn phí $16000</option>
+                  </select>
+                </label>
+                <label>
+                  <span>AI Bot</span>
+                  <select id="create-bots">
+                    <option value="0">0 Bot (1v1/Bạn bè)</option>
+                    <option value="3" selected>3 Bot</option>
+                    <option value="5">5 Bot</option>
+                    <option value="8">8 Bot</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Điểm thắng</span>
+                  <select id="create-limit">
+                    <option value="20">20 mạng</option>
+                    <option value="30" selected>30 mạng</option>
+                    <option value="50">50 mạng</option>
+                  </select>
+                </label>
+              </div>
+              <button id="btn-create-room" class="btn-create" type="button">
+                ➕ Tạo Phòng Dust II Cho Bạn Bè
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/game.js"></script>
+</body>
+</html>
